@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>ESP32 Security Scanner</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+
+        <div class="header">
+            <h1>ESP32 Security Auditor</h1>
+
+            <p class="subtitle">
+                Scanner de portas e vulnerabilidades em rede local
+            </p>
+        </div>
+
+        <div class="actions">
+            <button id="scanBtn">
+                🔍 Nova Varredura
+            </button>
+
+            <div id="totalHosts" class="host-counter">
+                Hosts encontrados: 0
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+
+            <table>
+
+                <thead>
+                    <tr>
+                        <th>IP</th>
+                        <th>Status</th>
+                        <th>Serviços</th>
+                        <th>Risco</th>
+                    </tr>
+                </thead>
+
+                <tbody id="tableBody"></tbody>
+
+            </table>
+
+        </div>
+
+        <div class="legend">
+
+            <div class="legend-item">
+                <span class="legend-color safe"></span>
+                Seguro
+            </div>
+
+            <div class="legend-item">
+                <span class="legend-color danger"></span>
+                Vulnerável
+            </div>
+
+        </div>
+
+        <footer>
+
+            <p>
+                Ferramenta com propósito exclusivamente educacional.
+            </p>
+
+            <p>
+                Utilize apenas em redes autorizadas.
+            </p>
+
+        </footer>
+
+    </div>
+
+    <script src="app.js"></script>
+
+</body>
+</html>
