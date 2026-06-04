@@ -12,8 +12,8 @@
 const char* ssid = "rede";
 const char* password = "senha";
 
-const char* DB_URL_VALUE = "https://cgrsawbvpzirtvmuftnw.supabase.co/rest/v1/scans";
-const char* ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNncnNhd2J2cHppcnR2bXVmdG53Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzOTkxNzEsImV4cCI6MjA5NDk3NTE3MX0.Ze9l_B4qPw5K8G62BcAPeP3YusJVsMqObsw-AwVUkDI";
+const char* DB_URL_VALUE = "";
+const char* ANON_KEY = "";
 // ============================
 // SERVIDOR WEB
 // ============================
