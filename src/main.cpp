@@ -7,7 +7,7 @@
 #include <SPIFFS.h>
 #include <HTTPClient.h>
 
-// Bibliotecas do kernel LwIP
+// Bibliotecas do kernel LwIP para Sockets de baixo nível
 #include "lwip/sockets.h"
 #include <errno.h>
 #include "lwip/etharp.h"
@@ -17,15 +17,18 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 
-// Instanciação do LCD I2C (Endereço padrão 0x27, 16 colunas, 2 linhas)
-LiquidCrystal_I2C lcd(0x27, 16, 2);
+// Instanciação do LCD I2C (Atualizado para o seu endereço 0x3F)
+LiquidCrystal_I2C lcd(0x3F, 16, 2);
 
 // ============================
 // CONFIGURAÇÕES GERAIS
 // ============================
-const char* DB_URL_VALUE = "https://cgrsawbvpzirtvmuftnw.supabase.co/rest/v1/rpc/insert_scan_data";
 const char* ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNncnNhd2J2cHppcnR2bXVmdG53Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzOTkxNzEsImV4cCI6MjA5NDk3NTE3MX0.Ze9l_B4qPw5K8G62BcAPeP3YusJVsMqObsw-AwVUkDI";
 const char* KNOWN_DEVICES_FILE = "/known_macs.json";
+
+// Endereços das novas funções RPC no Supabase (Sistema de Lotes)
+const char* URL_START_SCAN = "https://cgrsawbvpzirtvmuftnw.supabase.co/rest/v1/rpc/start_scan";
+const char* URL_BATCH_UPLOAD = "https://cgrsawbvpzirtvmuftnw.supabase.co/rest/v1/rpc/insert_scan_batch";
 
 unsigned long lastScanTime = 0;
 const unsigned long SCAN_INTERVAL = 3 * 60 * 1000; 
@@ -39,6 +42,7 @@ struct ServiceInfo {
   bool is_vulnerable;
 };
 
+// false = porta comum segura | true = porta crítica/legado
 const ServiceInfo target_services[] = {
   {80, "HTTP", false}, {443, "HTTPS", false}, {8080, "HTTP-Alt", false}, 
   {8443, "HTTPS-Alt", false}, {22, "SSH", false}, {23, "Telnet", true}, 
@@ -158,9 +162,6 @@ int checkSocketStatus(IPAddress ip, int port, int timeout_ms) {
 }
 
 // =========================================================================
-// UPLOAD SUPABASE
-// =========================================================================
-// =========================================================================
 // UPLOAD SUPABASE EM LOTES (ANTI-ESTOURO DE RAM)
 // =========================================================================
 void uploadToSupabase() {
@@ -174,8 +175,7 @@ void uploadToSupabase() {
   // -------------------------------------------------------------------------
   // FASE A: Criar o cabeçalho do Scan e recuperar o UUID gerado
   // -------------------------------------------------------------------------
-  String startUrl = "https://cgrsawbvpzirtvmuftnw.supabase.co/rest/v1/rpc/start_scan";
-  http.begin(startUrl);
+  http.begin(URL_START_SCAN);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("apikey", ANON_KEY);
   http.addHeader("Authorization", String("Bearer ") + ANON_KEY);
@@ -189,8 +189,7 @@ void uploadToSupabase() {
   
   if (httpCode >= 200 && httpCode < 300) {
     String response = http.getString();
-    // O Supabase retorna o valor puro ou dentro de aspas. Limpamos as aspas para obter o UUID limpo
-    response.replace("\"", "");
+    response.replace("\"", ""); // Limpa as aspas para obter o UUID limpo
     scan_id = response;
     scan_id.trim();
     Serial.println("[Nuvem] Scan ID gerado: " + scan_id);
@@ -205,16 +204,14 @@ void uploadToSupabase() {
   // FASE B: Transmitir os Dispositivos em lotes (Chunks de 10 em 10)
   // -------------------------------------------------------------------------
   int totalDevices = activeDevices.size();
-  int chunkSize = 10; // Tamanho ideal para manter o buffer JSON leve (~2.5KB)
+  int chunkSize = 10; 
   int totalBatches = (totalDevices + chunkSize - 1) / chunkSize;
-
-  String batchUrl = "https://cgrsawbvpzirtvmuftnw.supabase.co/rest/v1/rpc/insert_scan_batch";
 
   for (int i = 0; i < totalDevices; i += chunkSize) {
     int currentBatch = (i / chunkSize) + 1;
     lcdPrint("Enviando Lote", String(currentBatch) + "/" + String(totalBatches));
 
-    http.begin(batchUrl);
+    http.begin(URL_BATCH_UPLOAD);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("apikey", ANON_KEY);
     http.addHeader("Authorization", String("Bearer ") + ANON_KEY);
@@ -224,7 +221,6 @@ void uploadToSupabase() {
     docBatch["p_scan_id"] = scan_id;
     JsonArray devicesArr = docBatch.createNestedArray("p_devices");
 
-    // Preenche o lote atual
     for (int j = i; j < i + chunkSize && j < totalDevices; j++) {
       const auto& dev = activeDevices[j];
       JsonObject devObj = devicesArr.createNestedObject();
@@ -250,15 +246,15 @@ void uploadToSupabase() {
     Serial.printf("[Lote %d/%d] Resposta HTTP: %d\n", currentBatch, totalBatches, batchHttpCode);
     
     if (batchHttpCode < 200 || batchHttpCode >= 300) {
-      Serial.println("[Erro] Falha crítica ao enviar lote.");
-      // Opcional: break; para interromper se a rede cair no meio
+      Serial.println("[Erro] Falha ao enviar lote.");
     }
     http.end();
-    delay(100); // Pequeno respiro para estabilização do rádio e roteador
+    delay(150); // Respiro obrigatório para estabilização da pilha TCP
   }
 
   lcdPrint("Upload Concluido", "Hosts: " + String(totalDevices));
 }
+
 // =========================================================================
 // MOTOR DE VARREDURA
 // =========================================================================
@@ -372,6 +368,7 @@ void setup() {
   lcdPrint("Configurando", "Rede WiFi...");
   WiFiManager wm;
   
+  // Cria portal cativo chamado "Netsweeper_AP" com senha "admin123" se falhar em conectar
   bool res = wm.autoConnect("Netsweeper_AP", "admin123");
 
   if(!res) {
